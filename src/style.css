@@ -1,0 +1,23 @@
+@import "tailwindcss";
+@import 'vfonts/Inter.css';
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tool page full height */
+.tool-fullheight {
+  height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
