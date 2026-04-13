@@ -1,42 +1,22 @@
+[![Netlify Status](https://api.netlify.com/api/v1/badges/b79dd5d8-44ba-495f-b958-250ab3757348/deploy-status)](https://app.netlify.com/projects/vue-toolbox/deploys)
+
 # ToolBox
 
-A collection of developer utilities built with Vue 3, TypeScript, and Naive UI.
+A collection of utilities and tools built with Vue 3, TypeScript, Vite, and Naive UI.
 
 ## Tech Stack
 
-**Frontend:** Vue 3, TypeScript, Vite, Naive UI, Tailwind CSS
+**Frontend:** Vue 3 + TypeScript + Vite + Naive UI + Tailwind CSS  
+**Backend:** Netlify Functions + MongoDB + JWT  
+**HTTP Client:** Axios
 
-**Backend:** Netlify Functions (TypeScript), Mongoose, JWT
-
-## Getting Started
+## Quick Start
 
 ```bash
-npm install
+yarn
 netlify dev
 ```
 
-## Environment Variables
+## Environment
 
-```env
-MONGODB_URI=
-JWT_SECRET=
-```
-
-## Project Structure
-
-```
-src/
-├── components/   # Layout, Sidebar
-├── composables/  # useAuth, useDarkMode
-├── data/         # Tool registry
-├── pages/        # Route pages & tools
-├── router/
-└── services/     # API client
-
-netlify/functions/
-├── _lib/         # db, jwt helpers
-├── login.ts
-├── register.ts
-├── me.ts
-└── proxy.ts
-```
+Set up required environment variables for backend services (MongoDB URI, JWT secret, API keys, etc.)

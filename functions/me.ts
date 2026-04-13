@@ -1,45 +1,39 @@
-import type { Handler } from '@netlify/functions'
+import jwt from 'jsonwebtoken'
 import { getUserModel } from './_lib/db'
-import { authenticateRequest, CORS_HEADERS } from './_lib/jwt'
+import { checkMethod, createErrorResponse, createSuccessResponse } from './_lib/http'
+import { getJwtSecret, logError } from './_lib/utils'
+import { User } from '~/shared/types'
 
-export const handler: Handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS_HEADERS, body: '' }
-  if (event.httpMethod !== 'GET') {
-    return {
-      statusCode: 405,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({ success: false, message: 'Method not allowed' }),
-    }
+export default async (request: Request) => {
+  const methodError = checkMethod(request.method, ['GET'])
+  if (methodError) {
+    return methodError
   }
 
-  const auth = authenticateRequest(event)
-  if (auth.error) return auth.error as any
+  const authHeader =
+    request.headers.get('Authorization') || request.headers.get('authorization') || ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+  if (!token) {
+    return createErrorResponse('Missing token', 401)
+  }
 
   try {
-    const User = await getUserModel()
-    const user = await User.findById(auth.user!.id).select('-password')
-    if (!user) {
-      return {
-        statusCode: 404,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({ success: false, message: 'User not found' }),
-      }
+    const auth = jwt.verify(token, getJwtSecret()) as User
+    if (!auth) {
+      return createErrorResponse('Unauthorized', 401)
     }
 
-    return {
-      statusCode: 200,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({
-        success: true,
-        user: { id: user._id, email: user.email, isApproved: user.isApproved },
-      }),
+    const User = await getUserModel()
+    const user = await User.findById(auth!.id).select('-password')
+    if (!user) {
+      return createErrorResponse('User not found', 404)
     }
-  } catch (error) {
-    console.error('Me error:', error)
-    return {
-      statusCode: 500,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({ success: false, message: 'Server error. Please try again later.' }),
-    }
+
+    return createSuccessResponse({
+      user: { id: user._id.toString(), email: user.email, isApproved: user.isApproved },
+    })
+  } catch (error: unknown) {
+    logError(error)
+    return createErrorResponse()
   }
 }

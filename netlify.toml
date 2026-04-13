@@ -5,3 +5,11 @@
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
+
+[functions."schedules/weekly-job"]
+  schedule = "@weekly"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -1,81 +1,49 @@
-import type { Handler } from '@netlify/functions'
 import bcrypt from 'bcryptjs'
 import { getUserModel } from './_lib/db'
-import { CORS_HEADERS } from './_lib/jwt'
+import { checkMethod, createErrorResponse, createSuccessResponse, parseBody } from './_lib/http'
+import { logError } from './_lib/utils'
 
-export const handler: Handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS_HEADERS, body: '' }
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({ success: false, message: 'Method not allowed' }),
-    }
+export default async (request: Request) => {
+  const methodError = checkMethod(request.method, ['POST'])
+  if (methodError) {
+    return methodError
   }
 
   try {
-    const { email, password } = JSON.parse(event.body || '{}')
+    const bodyText = await request.text()
+    const { email, password } = parseBody(bodyText)
 
     if (!email || !password) {
-      return {
-        statusCode: 400,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({ success: false, message: 'Email and password are required' }),
-      }
+      return createErrorResponse('Email and password are required', 400)
     }
+
     if (password.length < 6) {
-      return {
-        statusCode: 400,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({
-          success: false,
-          message: 'Password must be at least 6 characters',
-        }),
-      }
+      return createErrorResponse('Invalid password', 400)
     }
+
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return {
-        statusCode: 400,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({
-          success: false,
-          message: 'Invalid email address',
-        }),
-      }
+      return createErrorResponse('Invalid email address', 400)
     }
 
     const User = await getUserModel()
 
     const existing = await User.findOne({ email: email.toLowerCase() })
     if (existing) {
-      return {
-        statusCode: 409,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({ success: false, message: 'Email is already taken' }),
-      }
+      return createErrorResponse('Email is already taken', 409)
     }
 
     const passwordHash = await bcrypt.hash(password, 12)
     const user = await User.create({ email: email.toLowerCase(), password: passwordHash })
 
-    return {
-      statusCode: 201,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({
-        success: true,
+    return createSuccessResponse(
+      {
         message: 'Registration successful',
-        user: { id: user._id, email },
-      }),
-    }
-  } catch (error) {
-    console.error('Register error:', error)
-    return {
-      statusCode: 500,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({
-        success: false,
-        message: 'Server error. Please try again later.',
-      }),
-    }
+        user: { id: user._id.toString(), email },
+      },
+      201,
+    )
+  } catch (error: unknown) {
+    logError(error)
+    return createErrorResponse()
   }
 }

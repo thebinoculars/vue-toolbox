@@ -1,140 +1,104 @@
-import type { Handler } from '@netlify/functions'
-import { authenticateRequest, CORS_HEADERS } from './_lib/jwt'
+import { URLSearchParams } from 'url'
+import axios, { AxiosRequestConfig } from 'axios'
+import { checkMethod, createErrorResponse, getDetailParam } from './_lib/http'
+import { getWeatherApiKey, logError } from './_lib/utils'
 
-interface ApiTarget {
-  baseUrl: string
-  authHeader: string | null
-  authPrefix?: string
-  authQueryParam?: string
-  envKey: string
-}
-
-const API_TARGETS: Record<string, ApiTarget> = {
-  openai: {
-    baseUrl: 'https://api.openai.com',
-    authHeader: 'Authorization',
-    authPrefix: 'Bearer ',
-    envKey: 'OPENAI_API_KEY',
-  },
+const SERVICES = {
   weather: {
-    baseUrl: 'https://api.openweathermap.org',
-    authHeader: null,
-    authQueryParam: 'appid',
-    envKey: 'OPENWEATHER_API_KEY',
+    baseURL: 'https://api.openweathermap.org',
+    params: {
+      units: 'metric',
+      lang: 'en',
+      appid: getWeatherApiKey(),
+    },
   },
-  github: {
-    baseUrl: 'https://api.github.com',
-    authHeader: 'Authorization',
-    authPrefix: 'Bearer ',
-    envKey: 'GITHUB_API_KEY',
+  spotlight: {
+    baseURL: 'https://fd.api.iris.microsoft.com/v4/api',
+    url: '/selection',
+    params: {
+      placement: '88000820',
+      fmt: 'json',
+      locale: 'en-US',
+      country: 'vi',
+    },
   },
 }
 
-export const handler: Handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS_HEADERS, body: '' }
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({ success: false, message: 'Method not allowed.' }),
-    }
+const DEFAULT_HEADERS = {
+  'Content-Type': 'application/json',
+}
+
+export default async (request: Request) => {
+  const methodError = checkMethod(request.method, ['GET', 'POST', 'PUT', 'DELETE'])
+  if (methodError) {
+    return methodError
   }
 
-  const auth = authenticateRequest(event)
-  if (auth.error) return auth.error as any
-
   try {
-    const {
-      target,
-      method = 'GET',
-      path = '/',
-      body: requestBody,
-      query = {},
-      customUrl,
-    } = JSON.parse(event.body || '{}')
+    const url = new URL(request.url)
+    const path = url.pathname
+    const target = getDetailParam(path, 'proxy')
 
     if (!target) {
-      return {
-        statusCode: 400,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({
-          success: false,
-          message: `Missing "target". Supported: ${Object.keys(API_TARGETS).join(', ')}, custom`,
-        }),
+      return createErrorResponse(`Missing target in path. Use format: /api/proxy/{target}`, 400)
+    }
+
+    const incomingHeaders = request.headers || {}
+    const rawQuery = url.searchParams || {}
+
+    const targetHeaders: Record<string, string> = { ...DEFAULT_HEADERS }
+
+    const config = SERVICES[target as keyof typeof SERVICES] as AxiosRequestConfig | undefined
+    if (!config) {
+      return createErrorResponse(`Unknown target "${target}"`, 400)
+    }
+
+    const mergedQuery = { ...config.params }
+    rawQuery.forEach((value, key) => {
+      mergedQuery[key] = value
+    })
+    const queryParams = new URLSearchParams(mergedQuery)
+
+    let requestUrl = config.url || ''
+    if (rawQuery.has('path')) {
+      const pathValue = rawQuery.get('path') || ''
+      requestUrl = pathValue.startsWith('/') ? pathValue : `/${pathValue}`
+      queryParams.delete('path')
+    }
+
+    const forwardHeaders: Record<string, string> = {}
+    Object.entries(incomingHeaders).forEach(([key, value]) => {
+      const lowerKey = key.toLowerCase()
+      if (lowerKey !== 'host' && lowerKey !== 'content-length' && typeof value === 'string') {
+        forwardHeaders[key] = value
       }
+    })
+
+    const axiosConfig = {
+      method: request.method,
+      baseURL: config.baseURL,
+      url: requestUrl,
+      params: Object.fromEntries(queryParams),
+      headers: { ...targetHeaders, ...forwardHeaders },
+      data: request.body && request.method !== 'GET' ? request.body : undefined,
+      responseType: 'text' as const,
     }
 
-    let targetUrl: string
-    const targetHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+    const response = await axios(axiosConfig)
 
-    if (target === 'custom') {
-      if (!customUrl)
-        return {
-          statusCode: 400,
-          headers: CORS_HEADERS,
-          body: JSON.stringify({
-            success: false,
-            message: 'Missing "customUrl" for custom target',
-          }),
-        }
-      targetUrl = customUrl
-    } else {
-      const config = API_TARGETS[target]
-      if (!config) {
-        return {
-          statusCode: 400,
-          headers: CORS_HEADERS,
-          body: JSON.stringify({ success: false, message: `Unknown target "${target}"` }),
-        }
+    const headers = new Headers()
+    Object.entries(response.headers).forEach(([key, value]) => {
+      if (value) {
+        headers.append(key, String(value))
       }
+    })
 
-      const apiKey = process.env[config.envKey]
-      if (!apiKey) {
-        return {
-          statusCode: 500,
-          headers: CORS_HEADERS,
-          body: JSON.stringify({
-            success: false,
-            message: `API key for "${target}" not configured. Set ${config.envKey}.`,
-          }),
-        }
-      }
-
-      const queryParams = new URLSearchParams(query)
-      if (config.authQueryParam) queryParams.set(config.authQueryParam, apiKey)
-      const qs = queryParams.toString()
-      targetUrl = `${config.baseUrl}${path}${qs ? '?' + qs : ''}`
-      if (config.authHeader)
-        targetHeaders[config.authHeader] = `${config.authPrefix || ''}${apiKey}`
-    }
-
-    const fetchOptions: RequestInit = { method: method.toUpperCase(), headers: targetHeaders }
-    if (requestBody && method.toUpperCase() !== 'GET')
-      fetchOptions.body = JSON.stringify(requestBody)
-
-    const response = await fetch(targetUrl, fetchOptions)
-    const text = await response.text()
-    let data: any
-    try {
-      data = JSON.parse(text)
-    } catch {
-      data = text
-    }
-
-    return {
-      statusCode: response.status,
-      headers: { ...CORS_HEADERS, 'X-Proxy-Status': response.status.toString() },
-      body: JSON.stringify({ success: response.ok, status: response.status, data }),
-    }
-  } catch (error: any) {
-    console.error('Proxy error:', error)
-    return {
-      statusCode: 500,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({
-        success: false,
-        message: 'Proxy request failed. ' + (error.message || 'Unknown error'),
-      }),
-    }
+    return new Response(response.data, {
+      status: response.status,
+      headers,
+    })
+  } catch (error: unknown) {
+    logError(error)
+    return createErrorResponse()
   }
 }

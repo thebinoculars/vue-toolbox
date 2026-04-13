@@ -1,12 +1,17 @@
 import mongoose from 'mongoose'
+import { getMongoDBUri } from './utils'
 
 const connections: Record<string, mongoose.Connection> = {}
 
-export async function connectDB(dbName: string): Promise<mongoose.Connection> {
-  if (connections[dbName]) return connections[dbName]
+export async function connectDB(dbName = 'toolbox'): Promise<mongoose.Connection> {
+  if (connections[dbName]) {
+    return connections[dbName]
+  }
 
-  const uri = process.env.MONGODB_URI
-  if (!uri) throw new Error('MONGODB_URI environment variable is not set')
+  const uri = getMongoDBUri()
+  if (!uri) {
+    throw new Error('MONGODB_URI environment variable is not set')
+  }
 
   const conn = await mongoose.createConnection(uri, { dbName }).asPromise()
   connections[dbName] = conn
@@ -23,6 +28,54 @@ const userSchema = new mongoose.Schema(
 )
 
 export async function getUserModel() {
-  const conn = await connectDB('auth')
-  return conn.models.User || conn.model('User', userSchema)
+  const conn = await connectDB()
+  return conn.models.User || conn.model('User', userSchema, 'users')
+}
+
+const trackSchema = new mongoose.Schema({
+  episode: Number,
+  titles: {
+    en: String,
+    ja: String,
+  },
+  release: String,
+  stamps: [
+    {
+      time: String,
+      song: {
+        id: Number,
+        titles: {
+          en: String,
+          ja: String,
+        },
+        time: String,
+        time_seconds: Number,
+        track: Number,
+      },
+      album: {
+        titles: {
+          en: String,
+          ja: String,
+        },
+        release: String,
+      },
+    },
+  ],
+})
+
+export async function getTrackModel() {
+  const conn = await connectDB()
+  return conn.models.OnePieceTrack || conn.model('OnePieceTrack', trackSchema, 'one-piece-tracks')
+}
+
+const gameSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+  },
+  { timestamps: true },
+)
+
+export async function getNesModel() {
+  const conn = await connectDB()
+  return conn.models.NesGame || conn.model('NesGame', gameSchema, 'nes-games')
 }

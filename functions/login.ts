@@ -1,72 +1,41 @@
-import type { Handler } from '@netlify/functions'
 import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
 import { getUserModel } from './_lib/db'
-import { generateToken, CORS_HEADERS } from './_lib/jwt'
+import { checkMethod, createErrorResponse, createSuccessResponse, parseBody } from './_lib/http'
+import { getJwtSecret, logError } from './_lib/utils'
 
-export const handler: Handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS_HEADERS, body: '' }
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({ success: false, message: 'Method not allowed' }),
-    }
+export default async (request: Request) => {
+  const methodError = checkMethod(request.method, ['POST'])
+  if (methodError) {
+    return methodError
   }
 
   try {
-    const { email, password } = JSON.parse(event.body || '{}')
+    const bodyText = await request.text()
+    const { email, password } = parseBody(bodyText)
 
     if (!email || !password) {
-      return {
-        statusCode: 400,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({
-          success: false,
-          message: 'Email and password are required',
-        }),
-      }
+      return createErrorResponse('Email and password are required', 400)
     }
 
     const User = await getUserModel()
     const user = await User.findOne({ email: email.toLowerCase() })
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      return {
-        statusCode: 401,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({ success: false, message: 'Invalid email or password' }),
-      }
+      return createErrorResponse('Invalid email or password', 401)
     }
 
     if (!user.isApproved) {
-      return {
-        statusCode: 403,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({ success: false, message: 'Your account is pending approval.' }),
-      }
+      return createErrorResponse('Your account is pending approval.', 403)
     }
 
-    const token = generateToken({ id: user._id.toString(), email: user.email })
+    const token = jwt.sign({ id: user._id.toString(), email: user.email }, getJwtSecret(), {
+      expiresIn: '7d',
+    })
 
-    return {
-      statusCode: 200,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({
-        success: true,
-        message: 'Login successful',
-        token,
-        user: { id: user._id, email: user.email },
-      }),
-    }
-  } catch (error) {
-    console.error('Login error:', error)
-    return {
-      statusCode: 500,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({
-        success: false,
-        message: 'Server error. Please try again later.',
-      }),
-    }
+    return createSuccessResponse({ token, user: { id: user._id.toString(), email: user.email } })
+  } catch (error: unknown) {
+    logError(error)
+    return createErrorResponse()
   }
 }
