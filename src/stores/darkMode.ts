@@ -1,10 +1,13 @@
+import { defineStore } from 'pinia'
 import { ref, watch, onMounted } from 'vue'
 
-const isDark = ref(false)
+const STORAGE_KEY = 'dark-mode'
 
-export function useDarkMode() {
+export const useDarkModeStore = defineStore('darkMode', () => {
+  const isDark = ref(true)
+
   onMounted(() => {
-    const saved = localStorage.getItem('darkMode')
+    const saved = localStorage.getItem(STORAGE_KEY)
     if (saved !== null) {
       isDark.value = saved === 'true'
     } else {
@@ -23,7 +26,7 @@ export function useDarkMode() {
 
   const toggleDarkMode = () => {
     isDark.value = !isDark.value
-    localStorage.setItem('darkMode', String(isDark.value))
+    localStorage.setItem(STORAGE_KEY, String(isDark.value))
     applyDarkMode()
   }
 
@@ -35,4 +38,4 @@ export function useDarkMode() {
     isDark,
     toggleDarkMode,
   }
-}
+})

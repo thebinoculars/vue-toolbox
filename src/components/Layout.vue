@@ -1,39 +1,59 @@
 <template>
-  <div :class="isDark ? 'dark' : ''" class="h-screen flex flex-col overflow-hidden"
-    :style="isDark ? 'background:#18181c;color:#fff' : 'background:#f5f5f5;color:#333'">
-
+  <div
+    :class="darkModeStore.isDark ? 'dark' : ''"
+    class="h-screen flex flex-col overflow-hidden"
+    :style="
+      darkModeStore.isDark ? 'background:#18181c;color:#fff' : 'background:#f5f5f5;color:#333'
+    "
+  >
     <!-- Header -->
-    <header :style="isDark ? 'background:#232326;border-color:#3a3a3f' : 'background:#fff;border-color:#e5e5e5'"
-      class="sticky top-0 z-50 border-b h-12 flex items-center px-4 gap-3 shrink-0">
-
-      <n-button text size="small" @click="sidebarOpen = !sidebarOpen">
-        <n-icon size="18" :style="isDark ? 'color:#888' : 'color:#666'"><MenuOutline /></n-icon>
+    <header
+      :style="
+        darkModeStore.isDark
+          ? 'background:#232326;border-color:#3a3a3f'
+          : 'background:#fff;border-color:#e5e5e5'
+      "
+      class="sticky top-0 z-50 border-b h-12 flex items-center px-4 gap-3 shrink-0"
+    >
+      <n-button text size="small" @click="layoutStore.toggleSidebar">
+        <n-icon size="18" :style="darkModeStore.isDark ? 'color:#888' : 'color:#666'"
+          ><Menu2
+        /></n-icon>
       </n-button>
 
-      <router-link to="/" class="flex items-center gap-2 no-underline shrink-0">
-        <n-icon size="22" color="#6366f1"><ConstructOutline /></n-icon>
-        <span class="font-bold text-base" :style="isDark ? 'color:#fff' : 'color:#111'">ToolBox</span>
+      <router-link
+        to="/"
+        class="flex items-center gap-2 no-underline shrink-0 hover:opacity-80 transition-opacity"
+      >
+        <n-icon size="22" color="#6366f1"><Tool /></n-icon>
+        <span
+          class="font-bold text-base tracking-wide m-0"
+          :style="darkModeStore.isDark ? 'color:#fff' : 'color:#111'"
+          >ToolBox</span
+        >
       </router-link>
 
       <div class="flex-1" />
 
-      <n-button text size="small" @click="toggleDarkMode">
-        <n-icon size="18" :style="isDark ? 'color:#facc15' : 'color:#555'">
-          <component :is="isDark ? SunnyOutline : MoonOutline" />
+      <n-button text size="small" @click="darkModeStore.toggleDarkMode">
+        <n-icon size="18" :style="darkModeStore.isDark ? 'color:#facc15' : 'color:#555'">
+          <component :is="darkModeStore.isDark ? Sun : Moon" />
         </n-icon>
       </n-button>
 
-      <template v-if="user">
-        <n-dropdown :options="userMenu" @select="handleUserAction">
-          <n-button size="small" secondary>
-            <template #icon><n-icon><PersonOutline /></n-icon></template>
-            {{ user.email }}
-          </n-button>
+      <template v-if="authStore.user">
+        <n-dropdown :options="userMenu" @select="handleUserAction" placement="bottom-end">
+          <div class="flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity">
+            <span class="text-sm font-medium">{{ authStore.user.email }}</span>
+            <n-icon size="16"><ChevronDown /></n-icon>
+          </div>
         </n-dropdown>
       </template>
       <template v-else>
         <router-link to="/login">
-          <n-button size="small" text :style="isDark ? 'color:#aaa' : 'color:#555'">Login</n-button>
+          <n-button size="small" text :style="darkModeStore.isDark ? 'color:#aaa' : 'color:#555'"
+            >Login</n-button
+          >
         </router-link>
         <router-link to="/register">
           <n-button size="small" type="primary">Sign Up</n-button>
@@ -43,13 +63,21 @@
 
     <!-- Body -->
     <div class="flex flex-1 overflow-hidden">
-
       <!-- Sidebar -->
       <transition name="sidebar">
-        <aside v-if="sidebarOpen"
-          :style="isDark ? 'background:#232326;border-color:#3a3a3f' : 'background:#fff;border-color:#e5e5e5'"
-          class="w-60 shrink-0 border-r flex flex-col overflow-hidden">
-          <SidebarContent :search="search" @update:search="search = $event" />
+        <aside
+          v-if="layoutStore.sidebarOpen"
+          :style="
+            darkModeStore.isDark
+              ? 'background:#232326;border-color:#3a3a3f'
+              : 'background:#fff;border-color:#e5e5e5'
+          "
+          class="w-60 shrink-0 border-r flex flex-col overflow-hidden"
+        >
+          <SidebarContent
+            :search="layoutStore.search"
+            @update:search="layoutStore.search = $event"
+          />
         </aside>
       </transition>
 
@@ -62,29 +90,60 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h } from 'vue'
+import { h, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NIcon, NDropdown } from 'naive-ui'
-import { ConstructOutline, SunnyOutline, MoonOutline, PersonOutline, LogOutOutline, MenuOutline } from '@vicons/ionicons5'
-import { useAuth } from '../composables/useAuth'
-import { useDarkMode } from '../composables/useDarkMode'
-import SidebarContent from './SidebarContent.vue'
+import { Sun, Moon, Logout, Menu2, ChevronDown, Tool } from '@vicons/tabler'
+import { useAuthStore } from '@/stores/auth'
+import { useDarkModeStore } from '@/stores/darkMode'
+import { useLayoutStore } from '@/stores/layout'
+import SidebarContent from '@/components/SidebarContent.vue'
 
-const { user, logout } = useAuth()
-const { isDark, toggleDarkMode } = useDarkMode()
+const authStore = useAuthStore()
+const darkModeStore = useDarkModeStore()
+const layoutStore = useLayoutStore()
 const router = useRouter()
 
-const sidebarOpen = ref(true)
-const search = ref('')
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const browser = (globalThis as any).window
 
+const onResize = () => {
+  layoutStore.updateSidebarOnResize()
+}
+
+onMounted(() => {
+  if (browser) {
+    browser.addEventListener('resize', onResize)
+  }
+})
+
+onUnmounted(() => {
+  if (browser) {
+    browser.removeEventListener('resize', onResize)
+  }
+})
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const renderIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) })
-const userMenu = [{ label: 'Logout', key: 'logout', icon: renderIcon(LogOutOutline) }]
+const userMenu = [{ label: 'Logout', key: 'logout', icon: renderIcon(Logout) }]
 const handleUserAction = (key: string) => {
-  if (key === 'logout') { logout(); router.push('/login') }
+  if (key === 'logout') {
+    authStore.logout()
+    router.push('/login')
+  }
 }
 </script>
 
 <style scoped>
-.sidebar-enter-active, .sidebar-leave-active { transition: width 0.2s ease, opacity 0.2s ease; }
-.sidebar-enter-from, .sidebar-leave-to { width: 0; opacity: 0; }
+.sidebar-enter-active,
+.sidebar-leave-active {
+  transition:
+    width 0.2s ease,
+    opacity 0.2s ease;
+}
+.sidebar-enter-from,
+.sidebar-leave-to {
+  width: 0;
+  opacity: 0;
+}
 </style>

@@ -13,7 +13,7 @@
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         <router-link
-          v-for="tool in tools.filter(t => t.category === cat)"
+          v-for="tool in tools.filter((t) => t.category === cat)"
           :key="tool.path"
           :to="tool.path"
           class="no-underline"
@@ -35,5 +35,5 @@
 
 <script setup lang="ts">
 import { NCard, NH2, NP, NIcon, NText, NTag } from 'naive-ui'
-import { tools, categories } from '../data/tools'
+import { tools, categories } from '@/data/tools'
 </script>
